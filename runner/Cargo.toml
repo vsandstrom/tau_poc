@@ -1,0 +1,8 @@
+[package]
+name = "streamer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+util = {path = "../util"}
+reqwest-websocket = "0.4.1"
