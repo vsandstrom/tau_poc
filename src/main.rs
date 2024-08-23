@@ -33,7 +33,14 @@ fn main() -> std::io::Result<()> {
       loop{
         let data = inner_ws_que.try_lock().unwrap().recv().unwrap(); 
         unsafe {
-          ws.send(Message::Binary( std::slice::from_raw_parts(data.as_ptr() as *const u8, data.len() * 4).to_vec())).unwrap();
+          ws.send(
+            Message::Binary( 
+              std::slice::from_raw_parts(
+                data.as_ptr() as *const u8,
+                data.len() * 4
+              ).to_vec()
+            )
+          ).unwrap();
         }
       }
     });
