@@ -13,10 +13,10 @@ use std::{
   thread::spawn
 };
 
-#[derive(Serialize)]
-struct Pkg {
-  data: Vec<f32>
-}
+// #[derive(Serialize)]
+// struct Pkg {
+//   data: Vec<f32>
+// }
 
 fn main() -> std::io::Result<()> {
   let (tx, rx) = channel::<Vec<f32>>();
@@ -32,9 +32,8 @@ fn main() -> std::io::Result<()> {
       let mut ws = accept(stream.unwrap()).unwrap();
       loop{
         let data = inner_ws_que.try_lock().unwrap().recv().unwrap(); 
-        if let Ok(pkg) = serde_json::to_string(&Pkg{data}) {
-          println!("{}", &pkg);
-          ws.send(Message::Text(pkg)).unwrap();
+        unsafe {
+          ws.send(Message::Binary( std::slice::from_raw_parts(data.as_ptr() as *const u8, data.len() * 4).to_vec())).unwrap();
         }
       }
     });
