@@ -8,19 +8,24 @@ use std::{
   sync::{
     mpsc::channel,
     Arc,
-    Mutex
+    Mutex, OnceLock
   }, 
   thread::spawn
 };
 
-// #[derive(Serialize)]
-// struct Pkg {
-//   data: Vec<f32>
-// }
+#[derive(Debug, Serialize, Clone, Copy)]
+struct Header {
+  pub channels: u16,
+  pub samplerate: u32,
+  pub blocksize: u32
+}
+
 
 fn main() -> std::io::Result<()> {
+  let header: OnceLock<Header> = OnceLock::<Header>::new();
   let (tx, rx) = channel::<Vec<f32>>();
   let ws_que = Arc::new(Mutex::new(rx));
+
 
   std::thread::spawn(move || audio_tap(tx));
 
@@ -28,8 +33,17 @@ fn main() -> std::io::Result<()> {
   let server = TcpListener::bind(url).unwrap();
   for stream in server.incoming() {
     let inner_ws_que = ws_que.clone();
+    // let inner_header = header;
     spawn(move || {
       let mut ws = accept(stream.unwrap()).unwrap();
+      // if let Some(head) = inner_header.get() {
+      //
+      //   ws.send(Message::Text(
+      //     serde_json::to_string(
+      //       head
+      //     ).unwrap()
+      //   ));
+      // }
       loop{
         let data = inner_ws_que.try_lock().unwrap().recv().unwrap(); 
         unsafe {

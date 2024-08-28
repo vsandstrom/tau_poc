@@ -1,15 +1,16 @@
-use core::time;
+use core::{panic, time};
 use std::{
-  sync::mpsc::Sender,
+  sync::{mpsc::Sender, Arc, OnceLock},
   thread
 };
+
+use crate::Header;
 
 use anyhow::Context;
 
 use cpal::{
-  default_host,
-  traits::{DeviceTrait, HostTrait, StreamTrait}, 
-  StreamConfig
+  default_host, 
+  traits::{DeviceTrait, HostTrait, StreamTrait}, BufferSize, SampleRate, StreamConfig
 };
 
 
@@ -27,6 +28,21 @@ pub fn audio_tap(que: Sender<Vec<f32>>) -> anyhow::Result<()> {
   let o_conf: StreamConfig = dest.default_output_config()?.into();
 
   let (tx, rx) = std::sync::mpsc::channel::<f32>();
+
+  // let _h = Header{
+  //   channels: i_conf.channels,
+  //   samplerate: {
+  //     let SampleRate(sr) = i_conf.sample_rate; 
+  //     sr
+  //   },
+  //   blocksize: match i_conf.buffer_size {
+  //     BufferSize::Fixed(size) => size,
+  //     _ => panic!("no set samplerate")
+  //
+  //   }
+  // };
+
+  // header.set(h).expect("Header unable to be set.");
   
   let input_cb = move |data: &[f32], _: &cpal::InputCallbackInfo| {
     let _ = que.send(data.to_vec());
@@ -34,6 +50,7 @@ pub fn audio_tap(que: Sender<Vec<f32>>) -> anyhow::Result<()> {
       let _ = tx.send(sample);
     }
   };
+
 
   let output_cb = move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
     for sample in data.iter_mut() {

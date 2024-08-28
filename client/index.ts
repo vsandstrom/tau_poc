@@ -9,4 +9,8 @@ ws.onmessage = (event) => {
   console.log(block);
 }
 
+var AudioContext = window.AudioContext || window.webkitAudioContext;
+var ctx = new AudioContext();
+
+
 
