@@ -1,51 +1,54 @@
 mod util;
 
-use serde::Serialize;
+use anyhow::Context;
 use tungstenite::{accept, Message};
-use util::audio_tap;
-use std::{
-  net::TcpListener, 
-  sync::{
-    mpsc::channel,
-    Arc,
-    Mutex, OnceLock
-  }, 
-  thread::spawn
+use util::{
+  audio_tap,
+  Header,
+  AudioBlock
 };
 
-#[derive(Debug, Serialize, Clone, Copy)]
-struct Header {
-  pub channels: u16,
-  pub samplerate: u32,
-  pub blocksize: u32
-}
+use serde_json::json;
+use std::{
+  cell::LazyCell, net::TcpListener, sync::{
+    mpsc::channel,
+    Arc,
+    Mutex, OnceLock, LazyLock
+  }, thread::spawn
+};
+
 
 
 fn main() -> std::io::Result<()> {
-  let header: OnceLock<Header> = OnceLock::<Header>::new();
-  let (tx, rx) = channel::<Vec<f32>>();
-  let ws_que = Arc::new(Mutex::new(rx));
+  let (tx_header, rx_header) = channel::<Header>();
+  let (tx_audioblock, rx_audioblock) = channel::<AudioBlock>();
+  let ws_que = Arc::new(Mutex::new(rx_audioblock));
+  let ws_header = Arc::new(Mutex::new(rx_header));
 
-
-  std::thread::spawn(move || audio_tap(tx));
+  std::thread::spawn(move || audio_tap(tx_audioblock, tx_header));
 
   let url = "127.0.0.1:8080";
   let server = TcpListener::bind(url).unwrap();
   for stream in server.incoming() {
     let inner_ws_que = ws_que.clone();
-    // let inner_header = header;
+    let inner_ws_header = ws_header.clone();
     spawn(move || {
       let mut ws = accept(stream.unwrap()).unwrap();
-      // if let Some(head) = inner_header.get() {
-      //
-      //   ws.send(Message::Text(
-      //     serde_json::to_string(
-      //       head
-      //     ).unwrap()
-      //   ));
-      // }
+      if let Ok(head) = inner_ws_header.lock() {
+        if let Ok(head) = head.recv() {
+          let _ = ws.send(Message::text(
+              json!({
+                "channels": head.channels,
+                "samplerate": head.samplerate,
+                "blocksize": head.blocksize
+              }
+            ).to_string()));
+        } else {
+          println!("hello");
+        }
+      }
       loop{
-        let data = inner_ws_que.try_lock().unwrap().recv().unwrap(); 
+        let AudioBlock(data) = inner_ws_que.try_lock().unwrap().recv().unwrap(); 
         unsafe {
           ws.send(
             Message::Binary( 

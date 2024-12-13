@@ -1,10 +1,12 @@
-use core::{panic, time};
+use serde::Serialize;
+use std::sync::{OnceLock, Arc};
+use serde_json;
 use std::{
-  sync::{mpsc::Sender, Arc, OnceLock},
-  thread
+  sync::mpsc::Sender,
+  thread,
+  time
 };
 
-use crate::Header;
 
 use anyhow::Context;
 
@@ -13,10 +15,19 @@ use cpal::{
   traits::{DeviceTrait, HostTrait, StreamTrait}, BufferSize, SampleRate, StreamConfig
 };
 
+#[derive(Debug, Serialize, Clone, Copy)]
+pub struct Header {
+  pub channels: u16,
+  pub samplerate: u32,
+  pub blocksize: u32
+}
+
+pub struct AudioBlock(pub Vec<f32>);
+
 
 /// Captures default input and transfers to default output. 
 /// Hijacks the buffer and sends it trough websockets. 
-pub fn audio_tap(que: Sender<Vec<f32>>) -> anyhow::Result<()> {
+pub fn audio_tap(tx_audioblock: Sender<AudioBlock>, tx_header: Sender<Header>) -> anyhow::Result<()> {
   let mut keep_alive = true;
   let host = default_host();
   let src = host .default_input_device()
@@ -29,23 +40,24 @@ pub fn audio_tap(que: Sender<Vec<f32>>) -> anyhow::Result<()> {
 
   let (tx, rx) = std::sync::mpsc::channel::<f32>();
 
-  // let _h = Header{
-  //   channels: i_conf.channels,
-  //   samplerate: {
-  //     let SampleRate(sr) = i_conf.sample_rate; 
-  //     sr
-  //   },
-  //   blocksize: match i_conf.buffer_size {
-  //     BufferSize::Fixed(size) => size,
-  //     _ => panic!("no set samplerate")
-  //
-  //   }
-  // };
+  let _h = Header{
+    channels: i_conf.channels,
+    samplerate: {
+      let SampleRate(sr) = i_conf.sample_rate; 
+      sr
+    },
+    blocksize: 512
+    // match i_conf.buffer_size {
+    //   BufferSize::Fixed(size) => size,
+    //   _ => panic!("no set samplerate")
+    // }
+  };
 
+  tx_header.send(_h);
   // header.set(h).expect("Header unable to be set.");
   
   let input_cb = move |data: &[f32], _: &cpal::InputCallbackInfo| {
-    let _ = que.send(data.to_vec());
+    let _ = tx_audioblock.send(AudioBlock(data.to_vec()));
     for &sample in data {
       let _ = tx.send(sample);
     }
@@ -57,7 +69,7 @@ pub fn audio_tap(que: Sender<Vec<f32>>) -> anyhow::Result<()> {
       *sample = rx.try_recv().unwrap_or(0.0); 
     }
     
-      // copy the audio to the queue. this is what is sent through the socket.
+      // copy the audio to the tx_audioblockue. this is what is sent through the socket.
     // println!("{:?}", data);
   };
 
